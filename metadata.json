@@ -1,0 +1,6 @@
+{
+  "name": "Nekorin Garage V1",
+  "description": "A high-fidelity, premium dark automotive garage application designed iPhone-first to track vehicles, performance metrics, and modification logs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
