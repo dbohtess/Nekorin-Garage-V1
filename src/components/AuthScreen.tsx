@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, ShieldCheck, Key, Disc } from 'lucide-react';
+import { User, Mail, Lock, ShieldCheck,  Disc } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
 
@@ -57,21 +57,7 @@ export default function AuthScreen({
     }
   };
 
-  const handleInstantDemo = async () => {
-    setLoading(true);
-    setError(null);
-    setIslandMessage('SYNCHRONIZING SULTAN...');
-    try {
-      const profile = await signInFn('Sultan.dbohtes@gmail.com', 'password123');
-      setIslandMessage('أهلاً بك يا سلطان');
-      onAuthSuccess(profile);
-    } catch (err: any) {
-      setError(err.message || 'Demo load failed.');
-      setIslandMessage('DEMO ERROR');
-    } finally {
-      setLoading(false);
-    }
-  };
+ 
 
   return (
     <div className="flex-1 flex flex-col justify-between p-6 bg-[#0c0c0e] overflow-y-auto scrollbar-none select-none relative" dir="rtl">
@@ -207,17 +193,7 @@ export default function AuthScreen({
           <div className="flex-grow border-t border-white/10" />
         </div>
 
-        {/* Instant Access Sultan Demo Account Button */}
-        <button
-          onClick={handleInstantDemo}
-          disabled={loading}
-          className="w-full bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border border-white/10 hover:border-white/20 text-xs py-3 px-4 rounded-xl transition-all font-bold font-mono flex items-center justify-center gap-2 cursor-pointer"
-        >
-          <Key className="w-3.5 h-3.5 text-red-500" />
-          الدخول كـ Sultan.dbohtes@gmail.com
-        </button>
-      </motion.div>
-
+       
       {/* Footer Switcher */}
       <div className="text-center pb-2 text-xs relative z-10">
         <span className="text-white/40">
@@ -230,6 +206,7 @@ export default function AuthScreen({
           {isSignUp ? 'تسجيل الدخول' : 'إنشاء حساب'}
         </button>
       </div>
+    </motion.div>
     </div>
   );
 }
