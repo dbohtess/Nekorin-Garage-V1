@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-const RELEASE_ID = '2026-07-25-login-v2';
+const RELEASE_ID = '2026-07-25-dashboard-v3';
 
 async function clearLegacyAppCache() {
   try {
