@@ -69,6 +69,7 @@ export default function Dashboard({
 
   // Modal / Form States
   const [showFuelForm, setShowFuelForm] = useState(false);
+  const [showVehicleForm, setShowVehicleForm] = useState(false);
   const [showMaintForm, setShowMaintForm] = useState(false);
   const [showDocDetails, setShowDocDetails] = useState<VehicleDocument | null>(null);
   const [showCameraSim, setShowCameraSim] = useState(false);
@@ -92,6 +93,13 @@ export default function Dashboard({
   const [editMonth, setEditMonth] = useState<string>('يوليو');
   const [editYear, setEditYear] = useState<string>('2026');
   const [savingPrices, setSavingPrices] = useState(false);
+
+  // Vehicle Form Fields
+  const [vehicleMake, setVehicleMake] = useState('');
+  const [vehicleModel, setVehicleModel] = useState('');
+  const [vehicleYear, setVehicleYear] = useState<string>(new Date().getFullYear().toString());
+  const [vehicleColor, setVehicleColor] = useState('');
+  const [submittingVehicle, setSubmittingVehicle] = useState(false);
 
   // Fuel Form Fields
   const [fuelOdometer, setFuelOdometer] = useState<string>('');
@@ -147,6 +155,8 @@ export default function Dashboard({
       const vResult = await firebaseService.getVehicles(user.uid);
       if (vResult.length > 0) {
         setVehicle(vResult[0]);
+      } else {
+        setVehicle(null);
       }
       
       const fResult = await firebaseService.getFuelLogs();
@@ -323,6 +333,36 @@ export default function Dashboard({
       setIslandMessage('REFUEL LOG ERROR');
     } finally {
       setSubmittingFuel(false);
+    }
+  };
+
+  // Add Vehicle handler
+  const handleAddVehicle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!vehicleMake.trim() || !vehicleModel.trim() || !vehicleYear) return;
+
+    setSubmittingVehicle(true);
+    setIslandMessage('ADDING VEHICLE...');
+    try {
+      const createdVehicle = await firebaseService.addVehicle({
+        make: vehicleMake.trim(),
+        model: vehicleModel.trim(),
+        year: Number(vehicleYear),
+        color: vehicleColor.trim(),
+        engine: '',
+        powerHp: 0,
+        torqueNm: 0,
+        zeroToSixty: 0,
+        imageUrl: '',
+        status: 'active',
+      });
+      setVehicle(createdVehicle);
+      setShowVehicleForm(false);
+      setIslandMessage('🚗 VEHICLE ADDED');
+    } catch {
+      setIslandMessage('VEHICLE SAVE ERROR');
+    } finally {
+      setSubmittingVehicle(false);
     }
   };
 
@@ -624,6 +664,15 @@ export default function Dashboard({
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                   <span className="text-[10px] font-bold text-white/70">موقف السيارة | متصل</span>
                 </div>
+                {!vehicle && (
+                  <button
+                    type="button"
+                    onClick={() => setShowVehicleForm(true)}
+                    className="mt-2 px-3 py-1.5 bg-red-600 hover:bg-red-500 text-white text-[10px] font-black rounded-lg transition-all cursor-pointer"
+                  >
+                    + إضافة سيارة
+                  </button>
+                )}
               </div>
               <div className="text-left font-mono">
                 <span className="text-[8px] text-white/40 block">آخر تحديث</span>
@@ -1885,6 +1934,84 @@ export default function Dashboard({
 
       {/* --- FLOATING SHEETS / DIALOGS (Animated via AnimatePresence) --- */}
       
+      {/* ADD VEHICLE FORM SHEET */}
+      <AnimatePresence>
+        {showVehicleForm && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="absolute inset-0 bg-black/80 backdrop-blur-md z-50 flex flex-col justify-end"
+          >
+            <motion.div
+              initial={{ y: '100%' }}
+              animate={{ y: 0 }}
+              exit={{ y: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 220 }}
+              className="bg-[#121215] border-t border-white/10 rounded-t-[24px] max-h-[85%] overflow-y-auto p-5 space-y-4 text-right"
+            >
+              <div className="flex items-center justify-between border-b border-white/5 pb-3">
+                <div>
+                  <h3 className="text-base font-black text-white">إضافة سيارة</h3>
+                  <span className="text-[9px] text-white/40 font-mono block">اربط السيارة بحسابك</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowVehicleForm(false)}
+                  className="px-3 py-1 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-white/60 font-mono text-xs cursor-pointer"
+                >
+                  إلغاء
+                </button>
+              </div>
+
+              <form onSubmit={handleAddVehicle} className="space-y-3">
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    required
+                    value={vehicleMake}
+                    onChange={(e) => setVehicleMake(e.target.value)}
+                    placeholder="الشركة"
+                    className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                  />
+                  <input
+                    required
+                    value={vehicleModel}
+                    onChange={(e) => setVehicleModel(e.target.value)}
+                    placeholder="الموديل"
+                    className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    required
+                    type="number"
+                    min="1900"
+                    max="2100"
+                    value={vehicleYear}
+                    onChange={(e) => setVehicleYear(e.target.value)}
+                    placeholder="السنة"
+                    className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                  />
+                  <input
+                    value={vehicleColor}
+                    onChange={(e) => setVehicleColor(e.target.value)}
+                    placeholder="اللون"
+                    className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-red-500"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={submittingVehicle}
+                  className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-black text-xs rounded-xl transition-all disabled:opacity-50 cursor-pointer"
+                >
+                  {submittingVehicle ? 'جاري الحفظ...' : 'حفظ السيارة'}
+                </button>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* 1. ADD FUEL ENTRY FORM SHEET */}
       <AnimatePresence>
         {showFuelForm && (
