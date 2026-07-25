@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Disc } from 'lucide-react';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
@@ -21,6 +21,7 @@ export default function AuthScreen({
     setLoading(true);
     setError(null);
     setIslandMessage('GOOGLE AUTHENTICATION...');
+
     try {
       const profile = await signInWithGoogleFn();
       if (!profile) return;
@@ -28,7 +29,7 @@ export default function AuthScreen({
       onAuthSuccess(profile);
     } catch (err: any) {
       if (err?.code !== 'auth/popup-closed-by-user') {
-        setError(err?.message || 'فشل تسجيل الدخول باستخدام Google.');
+        setError('تعذر تسجيل الدخول باستخدام Google. حاول مرة أخرى.');
         setIslandMessage('GOOGLE AUTH ERROR');
       }
     } finally {
@@ -37,50 +38,46 @@ export default function AuthScreen({
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-6 bg-[#0c0c0e] overflow-y-auto scrollbar-none select-none relative" dir="rtl">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-red-950/10 rounded-full blur-2xl pointer-events-none" />
-      
-      <div className="flex flex-col items-center text-center pt-6 space-y-3 relative z-10">
-        <div className="relative">
-          <div className="absolute inset-0 bg-red-600/20 rounded-full blur-md animate-pulse" />
-          <div className="w-16 h-16 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-center text-red-500 shadow-lg relative z-10">
-            <Disc className="w-8 h-8 text-red-500 animate-spin-slow" />
+    <main
+      className="relative h-[100svh] min-h-[100svh] w-full overflow-hidden bg-[#0c0c0e] text-white flex items-center justify-center px-5 py-6"
+      dir="rtl"
+    >
+      <div className="absolute -top-24 -right-20 w-64 h-64 rounded-full bg-red-950/20 blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-28 -left-24 w-72 h-72 rounded-full bg-red-950/10 blur-3xl pointer-events-none" />
+
+      <motion.section
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative z-10 w-full max-w-sm flex flex-col items-center text-center"
+        aria-labelledby="login-title"
+      >
+        <div className="relative mb-5">
+          <div className="absolute inset-0 bg-red-600/20 rounded-3xl blur-xl" />
+          <div className="relative w-20 h-20 rounded-3xl bg-black/40 border border-white/10 flex items-center justify-center shadow-2xl">
+            <Disc className="w-10 h-10 text-red-500 animate-spin-slow" aria-hidden="true" />
           </div>
         </div>
 
-        <div className="space-y-1">
-          <h2 className="text-2xl font-black tracking-tight text-white font-sans">
-            NEKORIN <span className="text-red-500">GARAGE</span>
-          </h2>
-          <p className="text-white/40 text-[9px] tracking-wider uppercase font-mono">
-            Automotive Spec & Log Engine • V1
-          </p>
-        </div>
-      </div>
+        <h1 className="text-[28px] leading-none font-black tracking-tight">
+          NEKORIN <span className="text-red-500">GARAGE</span>
+        </h1>
+        <p className="mt-3 text-xs text-white/45">إدارة سيارتك بسهولة.</p>
 
-      <motion.div
-        initial={{ opacity: 0, y: 15 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="my-auto py-4 space-y-5 relative z-10 text-right"
-      >
-        <div className="text-center">
-          <h3 className="text-lg font-bold text-white/90">تسجيل دخول السائق</h3>
-          <p className="text-xs text-white/40 mt-1 font-mono">
-            استخدم حساب Google للاتصال بقاعدة بيانات سيارتك
-          </p>
-        </div>
+        <h2 id="login-title" className="mt-8 text-lg font-bold text-white/90">
+          تسجيل الدخول
+        </h2>
 
         {error && (
-          <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-medium text-center">
+          <p className="mt-4 w-full rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2.5 text-xs text-red-400">
             {error}
-          </div>
+          </p>
         )}
 
         <button
           type="button"
           onClick={handleGoogleSignIn}
           disabled={loading}
-          className="w-full bg-white/5 hover:bg-white/10 text-white font-bold text-sm py-3 px-4 rounded-xl transition-all border border-white/10 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+          className="mt-5 w-full min-h-12 bg-white/5 hover:bg-white/10 text-white font-bold text-sm px-4 rounded-xl transition-all border border-white/10 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
         >
           {loading ? (
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -89,7 +86,7 @@ export default function AuthScreen({
           )}
           تسجيل الدخول باستخدام Google
         </button>
-      </motion.div>
-    </div>
+      </motion.section>
+    </main>
   );
 }
