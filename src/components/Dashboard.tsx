@@ -282,7 +282,9 @@ export default function Dashboard({
 
   if (latestFuelLog) {
     const distanceSinceLastRefuel = Math.max(0, currentOdometer - latestFuelLog.odometer);
-    const fuelConsumed = distanceSinceLastRefuel / averageEfficiency;
+    const fuelConsumed = averageEfficiency > 0
+      ? distanceSinceLastRefuel / averageEfficiency
+      : 0;
     const startingLiters = Math.min(tankCapacity, latestFuelLog.liters || 50);
     const remainingLiters = Math.max(0, startingLiters - fuelConsumed);
     
