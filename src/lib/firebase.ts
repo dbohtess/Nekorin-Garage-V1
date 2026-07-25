@@ -23,7 +23,7 @@ import {
 } from 'firebase/auth';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
-const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+const assetUrl = (path: string) => `${(import.meta as any).env?.BASE_URL || '/'}${path.replace(/^\/+/, '')}`;
 
 const metaEnv = (import.meta as any).env || {};
 
