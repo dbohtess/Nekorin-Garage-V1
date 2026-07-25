@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Home, 
   Fuel, 
@@ -27,11 +27,13 @@ import { motion, AnimatePresence } from 'motion/react';
 import firebaseService from '../lib/firebase';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+
 // Custom UAE Dirham symbol component
 const DirhamSymbol = ({ className = "h-3.5 w-auto inline" }: { className?: string }) => {
   return (
     <img
-      src="/input_file_0.png"
+      src={assetUrl('input_file_0.png')}
       className={`${className} filter invert align-middle inline-block mx-0.5`}
       alt="د.إ"
       onError={(e) => {
@@ -107,9 +109,13 @@ export default function Dashboard({
   const [maintCompleted, setMaintCompleted] = useState(true);
   const [submittingMaint, setSubmittingMaint] = useState(false);
 
-  // Camera Simulator States
+  // Camera and odometer OCR states
   const [cameraOdometer, setCameraOdometer] = useState<number>(126560);
   const [scanning, setScanning] = useState(false);
+  const [cameraError, setCameraError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const cameraStreamRef = useRef<MediaStream | null>(null);
 
   // Document Upload States
   const [dragActive, setDragActive] = useState(false);
@@ -362,18 +368,148 @@ export default function Dashboard({
     }
   };
 
-  // Odometer OCR Scan Simulation
-  const handleOdometerCapture = () => {
+  const stopCamera = () => {
+    cameraStreamRef.current?.getTracks().forEach((track) => track.stop());
+    cameraStreamRef.current = null;
+    if (videoRef.current) videoRef.current.srcObject = null;
+  };
+
+  useEffect(() => {
+    if (!showCameraSim) {
+      stopCamera();
+      return;
+    }
+
+    let cancelled = false;
+    setCameraError(null);
+
+    const startCamera = async () => {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setCameraError('الكاميرا غير مدعومة في هذا المتصفح. افتح الموقع عبر Safari أو Chrome باستخدام HTTPS.');
+        return;
+      }
+
+      try {
+        let stream: MediaStream;
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: 'environment' } },
+            audio: false,
+          });
+        } catch {
+          stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        }
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        cameraStreamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play();
+        }
+      } catch {
+        setCameraError('تعذر فتح الكاميرا. اسمح للموقع باستخدام الكاميرا ثم حاول مرة أخرى.');
+        setIslandMessage('CAMERA ACCESS ERROR');
+      }
+    };
+
+    startCamera();
+    return () => {
+      cancelled = true;
+      stopCamera();
+    };
+  }, [showCameraSim]);
+
+  const loadOcrEngine = async () => {
+    const browserWindow = window as typeof window & {
+      Tesseract?: {
+        recognize: (
+          image: HTMLCanvasElement,
+          language: string,
+          options?: { logger?: (message: { status?: string; progress?: number }) => void },
+        ) => Promise<{ data: { text: string } }>;
+      };
+    };
+
+    if (browserWindow.Tesseract) return browserWindow.Tesseract;
+
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.getElementById('tesseract-ocr-runtime') as HTMLScriptElement | null;
+      if (existing) {
+        if (browserWindow.Tesseract) resolve();
+        else {
+          existing.addEventListener('load', () => resolve(), { once: true });
+          existing.addEventListener('error', () => reject(new Error('OCR runtime failed')), { once: true });
+        }
+        return;
+      }
+
+      const script = document.createElement('script');
+      script.id = 'tesseract-ocr-runtime';
+      script.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error('OCR runtime failed'));
+      document.head.appendChild(script);
+    });
+
+    if (!browserWindow.Tesseract) throw new Error('OCR runtime unavailable');
+    return browserWindow.Tesseract;
+  };
+
+  const extractOdometerNumber = (rawText: string) => {
+    const normalized = rawText.replace(/[Oo]/g, '0').replace(/[Il|]/g, '1');
+    const candidates = normalized.match(/\d[\d\s,.-]{1,10}\d|\d{3,8}/g) || [];
+    const values = candidates
+      .map((value) => value.replace(/\D/g, ''))
+      .filter((value) => value.length >= 3 && value.length <= 8)
+      .map(Number)
+      .filter((value) => Number.isFinite(value) && value > 0);
+    return values.sort((a, b) => b.toString().length - a.toString().length || b - a)[0] || null;
+  };
+
+  const handleOdometerCapture = async () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setCameraError('الكاميرا لم تجهز بعد. انتظر لحظة ثم أعد التصوير.');
+      return;
+    }
+
     setScanning(true);
+    setCameraError(null);
     setIslandMessage('SCANNING ODOMETER DISPLAY...');
-    
-    setTimeout(() => {
-      setFuelOdometer(cameraOdometer.toString());
-      setMaintOdometer(cameraOdometer.toString());
-      setScanning(false);
+
+    try {
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Camera canvas unavailable');
+      context.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const ocr = await loadOcrEngine();
+      const result = await ocr.recognize(canvas, 'eng');
+      const detected = extractOdometerNumber(result.data.text);
+      if (!detected) {
+        setCameraError('تعذر قراءة رقم العداد. قرّب الكاميرا وثبّتها ثم اضغط التصوير مرة أخرى.');
+        setIslandMessage('OCR FAILED — RETRY');
+        return;
+      }
+
+      setCameraOdometer(detected);
+      setFuelOdometer(detected.toString());
+      setMaintOdometer(detected.toString());
       setShowCameraSim(false);
-      setIslandMessage(`OCR DETECTED: ${cameraOdometer.toLocaleString()} KM`);
-    }, 2000);
+      setIslandMessage(`OCR DETECTED: ${detected.toLocaleString()} KM`);
+    } catch {
+      setCameraError('تعذرت قراءة العداد. تأكد من وضوح الرقم واتصال الإنترنت ثم أعد التصوير.');
+      setIslandMessage('OCR ERROR — RETRY');
+    } finally {
+      setScanning(false);
+    }
   };
 
   // Drag and Drop simulated document upload
@@ -506,24 +642,24 @@ export default function Dashboard({
                 
                 {/* Core Image Display */}
                 <img
-                  src="/assets/nekorin-altima.png"
+                  src={assetUrl('assets/nekorin-altima.png')}
                   alt=""
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-contain relative z-20 p-5 scale-[1.35] -translate-y-0.5 transform origin-center transition-all duration-300"
                   onError={(e) => {
                     const img = e.currentTarget;
                     if (img.src.includes('/assets/nekorin-altima.png')) {
-                      img.src = '/input_file_5.png';
+                      img.src = assetUrl('input_file_5.png');
                     } else if (img.src.includes('/input_file_5.png')) {
-                      img.src = '/input_file_2.png';
+                      img.src = assetUrl('input_file_2.png');
                     } else if (img.src.includes('/input_file_2.png')) {
-                      img.src = '/input_file_1.png';
+                      img.src = assetUrl('input_file_1.png');
                     } else if (img.src.includes('/input_file_1.png')) {
-                      img.src = '/input_file_0.png';
+                      img.src = assetUrl('input_file_0.png');
                     } else if (img.src.includes('/input_file_0.png')) {
-                      img.src = '/input_file_3.png';
+                      img.src = assetUrl('input_file_3.png');
                     } else if (img.src.includes('/input_file_3.png')) {
-                      img.src = '/input_file_4.png';
+                      img.src = assetUrl('input_file_4.png');
                     }
                   }}
                 />
@@ -772,7 +908,7 @@ export default function Dashboard({
                 {/* Employee Nekorin Photo Box (takes left part of card) */}
                 <div className="w-24 h-32 rounded-xl overflow-hidden relative border border-white/5 flex-shrink-0">
                   <img
-                    src="/assets/nekorin-fuel-attendant .png"
+                    src={assetUrl('assets/nekorin-fuel-attendant .png')}
                     alt=""
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-contain"
@@ -848,7 +984,7 @@ export default function Dashboard({
                 {/* Right side: float Nekorin half-body */}
                 <div className="w-20 h-28 rounded-xl overflow-hidden relative flex-shrink-0 self-end">
                   <img
-                    src="/assets/nekorin-advisor.png"
+                    src={assetUrl('assets/nekorin-advisor.png')}
                     alt=""
                     referrerPolicy="no-referrer"
                     className="w-full h-full object-contain scale-110 object-top"
@@ -2180,90 +2316,43 @@ export default function Dashboard({
         )}
       </AnimatePresence>
 
-      {/* 4. INTERACTIVE ODOMETER CAMERA SCANNER / OCR SIMULATOR */}
+      {/* 4. INTERACTIVE ODOMETER CAMERA SCANNER / OCR */}
       <AnimatePresence>
         {showCameraSim && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-black z-50 flex flex-col justify-between font-sans"
-          >
-            {/* Viewfinder Header */}
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black z-50 flex flex-col justify-between font-sans">
             <div className="p-4 flex justify-between items-center bg-black/60 z-10">
               <span className="text-xs font-mono font-bold text-red-500 animate-pulse flex items-center gap-1.5">
                 <span className="w-2 h-2 bg-red-600 rounded-full" />
                 NISSAN_CAMERA_OCR_V1.1
               </span>
-              <button
-                onClick={() => {
-                  setIslandMessage('CAMERA DISENGAGED');
-                  setShowCameraSim(false);
-                }}
-                className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs text-white cursor-pointer"
-              >
+              <button onClick={() => { setIslandMessage('CAMERA DISENGAGED'); setShowCameraSim(false); }} className="px-3 py-1 bg-white/10 hover:bg-white/20 rounded-lg text-xs text-white cursor-pointer">
                 إلغاء
               </button>
             </div>
 
-            {/* Simulated Live Viewfinder Frame */}
-            <div className="flex-1 flex flex-col items-center justify-center relative px-6 text-center">
-              {/* Backing Dashboard reference simulation overlay */}
+            <div className="flex-1 flex flex-col items-center justify-center relative px-6 text-center overflow-hidden">
               <div className="absolute inset-0 bg-[radial-gradient(#1a0505_10%,transparent_100%)] opacity-30" />
-              
-              {/* Retro Odometer Display Box */}
-              <div className="w-64 p-5 bg-[#0f1115] border border-red-500/30 rounded-2xl relative shadow-2xl flex flex-col items-center justify-center animate-pulse">
-                {/* Core digital display screen */}
-                <div className="bg-[#1b2319] border border-white/5 rounded-xl px-5 py-3 font-mono text-center tracking-[0.2em] relative overflow-hidden w-full">
-                  <div className="absolute inset-0 bg-gradient-to-b from-[#1b2319] via-transparent to-[#1b2319]/25 pointer-events-none" />
-                  <span className="text-3xl font-bold text-[#4bf33b] drop-shadow-[0_0_8px_rgba(75,243,59,0.6)]">
-                    {cameraOdometer.toString().padStart(6, '0')}
-                  </span>
-                  <span className="text-[8px] text-[#4bf33b]/40 block tracking-normal mt-1">TOTAL ODOMETER KM</span>
-                </div>
-                
-                {/* Calibration Guide Lines */}
-                <div className="absolute -inset-2 border-2 border-dashed border-red-500/40 rounded-[22px] pointer-events-none" />
+              <div className="w-full max-w-sm aspect-[3/4] bg-[#0f1115] border border-red-500/30 rounded-2xl relative shadow-2xl overflow-hidden">
+                <video ref={videoRef} autoPlay muted playsInline className="w-full h-full object-cover" />
+                <div className="absolute inset-[12%] border-2 border-dashed border-red-500/50 rounded-xl pointer-events-none" />
+                <div className="absolute bottom-3 inset-x-0 text-[9px] font-mono text-white/70 tracking-widest">ALIGN ODOMETER INSIDE FRAME</div>
               </div>
-
-              <div className="mt-8 space-y-2 max-w-xs relative z-10">
-                <span className="text-xs font-bold text-neutral-200 block">قم بتحريك شريط التعديل لتغيير قيمة الكيلومترات للعداد</span>
-                <p className="text-[10px] text-white/40">قم بمحاكاة تصوير عداد السرعة في السيارة حركياً لتحديث قراءة العداد تلقائياً.</p>
-              </div>
-
-              {/* Slider Controller */}
-              <div className="w-full max-w-xs mt-4 relative z-10 px-4">
-                <input
-                  type="range"
-                  min="120000"
-                  max="140000"
-                  step="50"
-                  value={cameraOdometer}
-                  onChange={(e) => setCameraOdometer(Number(e.target.value))}
-                  className="w-full accent-red-600"
-                />
-                <div className="flex justify-between text-[10px] font-mono text-white/30 mt-1">
-                  <span>120,000 كم</span>
-                  <span>140,000 كم</span>
-                </div>
+              <canvas ref={canvasRef} className="hidden" />
+              <div className="mt-5 space-y-2 max-w-xs relative z-10">
+                <span className="text-xs font-bold text-neutral-200 block">وجّه الكاميرا الخلفية نحو رقم العداد وثبّت الهاتف</span>
+                <p className="text-[10px] text-white/40">اضغط زر التصوير لقراءة رقم العداد وتعبئة الحقل تلقائياً.</p>
+                {cameraError && (
+                  <p className="text-[10px] text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-2">{cameraError}</p>
+                )}
               </div>
             </div>
 
-            {/* Viewfinder Bottom Controls */}
             <div className="p-6 bg-black/60 flex flex-col items-center justify-center gap-3 z-10">
-              <button
-                onClick={handleOdometerCapture}
-                disabled={scanning}
-                className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 border-4 border-white/20 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-xl shadow-red-950/40"
-              >
-                {scanning ? (
-                  <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : (
-                  <Camera className="w-6 h-6 text-white" strokeWidth={2.5} />
-                )}
+              <button onClick={handleOdometerCapture} disabled={scanning} className="w-16 h-16 rounded-full bg-red-600 hover:bg-red-500 border-4 border-white/20 active:scale-95 transition-all flex items-center justify-center cursor-pointer shadow-xl shadow-red-950/40 disabled:opacity-50">
+                {scanning ? <span className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Camera className="w-6 h-6 text-white" strokeWidth={2.5} />}
               </button>
               <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest">
-                {scanning ? 'OCR ANALYSIS IN PROGRESS...' : 'CAPTURE SCREENSHOT FOR AUTO-OCR'}
+                {scanning ? 'OCR ANALYSIS IN PROGRESS...' : cameraError ? 'RETRY ODOMETER CAPTURE' : 'CAPTURE ODOMETER FOR AUTO-OCR'}
               </span>
             </div>
           </motion.div>
