@@ -15,12 +15,11 @@ import {
 import { 
   getAuth, 
   onAuthStateChanged as firebaseOnAuthStateChanged, 
-  signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword,
   GoogleAuthProvider,
   signInWithPopup,
-  signOut as firebaseSignOut, 
-  updateProfile 
+  signInWithRedirect,
+  signOut as firebaseSignOut,
+  updateProfile
 } from 'firebase/auth';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
@@ -29,17 +28,23 @@ const assetUrl = (path: string) => `${(import.meta as any).env?.BASE_URL || '/'}
 const metaEnv = (import.meta as any).env || {};
 
 const firebaseConfig = {
-  apiKey: "AIzaSyD1W5X3LJNuVpiF6dhZfB-5wGwIOVY6OL4",
-  authDomain: "nekorin-garage-v1.firebaseapp.com",
-  projectId: "nekorin-garage-v1",
-  storageBucket: "nekorin-garage-v1.firebasestorage.app",
-  messagingSenderId: "673496496137",
-  appId: "1:673496496137:web:67b3ae003f744f2c3360d8",
-  measurementId: "G-PX36KG0CG0"
+  apiKey: metaEnv.VITE_FIREBASE_API_KEY,
+  authDomain: metaEnv.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: metaEnv.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: metaEnv.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: metaEnv.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: metaEnv.VITE_FIREBASE_APP_ID,
+  measurementId: metaEnv.VITE_FIREBASE_MEASUREMENT_ID,
 };
 
-// Check if we have valid Firebase config
-const hasFirebaseConfig = true;
+const hasFirebaseConfig = [
+  firebaseConfig.apiKey,
+  firebaseConfig.authDomain,
+  firebaseConfig.projectId,
+  firebaseConfig.storageBucket,
+  firebaseConfig.messagingSenderId,
+  firebaseConfig.appId,
+].every(Boolean);
 
 let app;
 let db: ReturnType<typeof getFirestore> | null = null;
@@ -111,47 +116,37 @@ class FirebaseService {
   }
 
   // --- Auth API ---
-  async signUp(email: string, password: string, displayName: string, garageName: string): Promise<UserProfile> {
-    if (!auth || !db) {
-      throw new Error('Firebase integration is not initialized. Please configure VITE_FIREBASE_* environment variables.');
-    }
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    const user = userCredential.user;
-    
-    await updateProfile(user, { displayName });
-
-    const profile: UserProfile = {
-      uid: user.uid,
-      email: user.email || email,
-      displayName: displayName || user.email?.split('@')[0] || '',
-      garageName: garageName || `${displayName || 'Nekorin'}'s Garage`,
-    };
-
-    await setDoc(doc(db, 'users', user.uid), profile);
-
-    this.currentUserProfile = profile;
-    this.triggerAuthChange(profile);
-    return profile;
-  }
-
-  async signIn(email: string, password: string): Promise<UserProfile> {
-    if (!auth || !db) {
-      throw new Error('Firebase integration is not initialized.');
-    }
-
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return this.getOrCreateUserProfile(userCredential.user);
-  }
-
-  async signInWithGoogle(): Promise<UserProfile> {
+  async signInWithGoogle(): Promise<UserProfile | null> {
     if (!auth || !db) {
       throw new Error('Firebase integration is not initialized.');
     }
 
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
-    const userCredential = await signInWithPopup(auth, provider);
-    return this.getOrCreateUserProfile(userCredential.user);
+
+    const userAgent = navigator.userAgent;
+    const isIOS = /iPad|iPhone|iPod/i.test(userAgent)
+      || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isSafari = /^((?!chrome|android|crios|fxios|edgios).)*safari/i.test(userAgent);
+
+    if (isIOS || isSafari) {
+      await signInWithRedirect(auth, provider);
+      return null;
+    }
+
+    try {
+      const userCredential = await signInWithPopup(auth, provider);
+      return this.getOrCreateUserProfile(userCredential.user);
+    } catch (error: any) {
+      if (
+        error?.code === 'auth/popup-blocked'
+        || error?.code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        await signInWithRedirect(auth, provider);
+        return null;
+      }
+      throw error;
+    }
   }
 
   private async getOrCreateUserProfile(user: { uid: string; email: string | null; displayName: string | null }): Promise<UserProfile> {
@@ -202,6 +197,23 @@ class FirebaseService {
     this.authCallbacks.forEach(cb => cb(user));
   }
 
+  private getAuthenticatedUserId(): string {
+    const userId = auth?.currentUser?.uid;
+    if (!db || !userId) throw new Error('User is not authenticated');
+    return userId;
+  }
+
+  private async assertOwnedRecord(collectionName: string, id: string) {
+    if (!db) throw new Error('Firestore is not initialized');
+    const userId = this.getAuthenticatedUserId();
+    const recordRef = doc(db, collectionName, id);
+    const snapshot = await getDoc(recordRef);
+    if (!snapshot.exists() || snapshot.data().userId !== userId) {
+      throw new Error('Record not found or access denied');
+    }
+    return snapshot;
+  }
+
   // --- Vehicles API ---
   async getVehicles(userId: string): Promise<Vehicle[]> {
     if (!db || auth?.currentUser?.uid !== userId) return [];
@@ -213,6 +225,23 @@ class FirebaseService {
       vehicles.push({ id: docSnap.id, ...docSnap.data() } as Vehicle);
     });
     return vehicles;
+  }
+
+  async addVehicle(vehicle: Omit<Vehicle, 'id' | 'userId' | 'createdAt'>): Promise<Vehicle> {
+    if (!db) throw new Error('Firestore is not initialized');
+    const userId = this.getAuthenticatedUserId();
+    const createdAt = Date.now();
+    const docRef = await addDoc(collection(db, 'vehicles'), {
+      ...vehicle,
+      userId,
+      createdAt,
+    });
+    return {
+      ...vehicle,
+      id: docRef.id,
+      userId,
+      createdAt,
+    };
   }
 
   // --- Fuel Logs API ---
@@ -270,12 +299,14 @@ class FirebaseService {
 
   async deleteFuelLog(id: string): Promise<void> {
     if (!db) throw new Error('Firestore is not initialized');
+    await this.assertOwnedRecord('fuel_logs', id);
     await deleteDoc(doc(db, 'fuel_logs', id));
   }
 
   async updateFuelLog(id: string, updatedFields: Partial<Omit<FuelLog, 'id' | 'createdAt'>>): Promise<FuelLog> {
     if (!db) throw new Error('Firestore is not initialized');
     const docRef = doc(db, 'fuel_logs', id);
+    await this.assertOwnedRecord('fuel_logs', id);
     await updateDoc(docRef, updatedFields);
     
     const docSnap = await getDoc(docRef);
@@ -348,7 +379,7 @@ class FirebaseService {
   async toggleMaintenanceLog(id: string): Promise<MaintenanceLog> {
     if (!db) throw new Error('Firestore is not initialized');
     const docRef = doc(db, 'maintenance_logs', id);
-    const docSnap = await getDoc(docRef);
+    const docSnap = await this.assertOwnedRecord('maintenance_logs', id);
     if (!docSnap.exists()) {
       throw new Error('Maintenance log not found');
     }
@@ -371,12 +402,14 @@ class FirebaseService {
 
   async deleteMaintenanceLog(id: string): Promise<void> {
     if (!db) throw new Error('Firestore is not initialized');
+    await this.assertOwnedRecord('maintenance_logs', id);
     await deleteDoc(doc(db, 'maintenance_logs', id));
   }
 
   async updateMaintenanceLog(id: string, updatedFields: Partial<Omit<MaintenanceLog, 'id' | 'createdAt'>>): Promise<MaintenanceLog> {
     if (!db) throw new Error('Firestore is not initialized');
     const docRef = doc(db, 'maintenance_logs', id);
+    await this.assertOwnedRecord('maintenance_logs', id);
     await updateDoc(docRef, updatedFields);
     
     const docSnap = await getDoc(docRef);
@@ -449,12 +482,14 @@ class FirebaseService {
 
   async deleteDocument(id: string): Promise<void> {
     if (!db) throw new Error('Firestore is not initialized');
+    await this.assertOwnedRecord('documents', id);
     await deleteDoc(doc(db, 'documents', id));
   }
 
   async updateDocument(id: string, updatedFields: Partial<Omit<VehicleDocument, 'id' | 'createdAt'>>): Promise<VehicleDocument> {
     if (!db) throw new Error('Firestore is not initialized');
     const docRef = doc(db, 'documents', id);
+    await this.assertOwnedRecord('documents', id);
     await updateDoc(docRef, updatedFields);
     
     const docSnap = await getDoc(docRef);

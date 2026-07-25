@@ -60,8 +60,6 @@ export default function App() {
       ) : !user ? (
         <AuthScreen
           onAuthSuccess={(profile) => setUser(profile)}
-          signUpFn={firebaseService.signUp.bind(firebaseService)}
-          signInFn={firebaseService.signIn.bind(firebaseService)}
           signInWithGoogleFn={firebaseService.signInWithGoogle.bind(firebaseService)}
           setIslandMessage={setIslandMessage}
         />
