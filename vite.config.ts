@@ -5,6 +5,7 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    base: '/Nekorin-Garage-V1/',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
