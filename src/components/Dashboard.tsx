@@ -28,6 +28,7 @@ import firebaseService from '../lib/firebase';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
 const assetUrl = (path: string) => `${(import.meta as any).env?.BASE_URL || '/'}${path.replace(/^\/+/, '')}`;
+const mediaUrl = (path: string) => /^https?:\/\//i.test(path) ? path : assetUrl(path);
 
 // Custom UAE Dirham symbol component
 const DirhamSymbol = ({ className = "h-3.5 w-auto inline" }: { className?: string }) => {
@@ -275,12 +276,12 @@ export default function Dashboard({
 
   // Remaining range and fuel percentage calculated from the latest fuel entry
   const latestFuelLog = fuelLogs.length > 0 ? [...fuelLogs].sort((a, b) => b.odometer - a.odometer)[0] : null;
-  const tankCapacity = 65; // Nissan Altima 2014 fuel tank capacity in liters
+  const tankCapacity = Number(vehicle?.tankCapacity) || 0;
   
   let fuelPercentage = 0;
   let remainingRange = 0;
 
-  if (latestFuelLog) {
+  if (latestFuelLog && tankCapacity > 0) {
     const distanceSinceLastRefuel = Math.max(0, currentOdometer - latestFuelLog.odometer);
     const fuelConsumed = averageEfficiency > 0
       ? distanceSinceLastRefuel / averageEfficiency
@@ -355,6 +356,7 @@ export default function Dashboard({
         powerHp: 0,
         torqueNm: 0,
         zeroToSixty: 0,
+        tankCapacity: 0,
         imageUrl: '',
         status: 'active',
       });
@@ -653,7 +655,7 @@ export default function Dashboard({
               </button>
             </div>
 
-            {/* Nissan Altima 2014 Header */}
+            {/* Vehicle header */}
             <div className="px-4 pt-1 flex justify-between items-end font-sans">
               <div>
                 <div className="flex items-baseline gap-1.5">
@@ -687,12 +689,12 @@ export default function Dashboard({
             {/* Main Hero Image */}
             <div className="px-4">
               <div className="relative h-44 w-full bg-[#0d0d10] border border-white/5 rounded-2xl overflow-hidden shadow-2xl">
-                {/* Backglow behind the Altima */}
+                {/* Backglow behind the vehicle */}
                 <div className="absolute top-[35%] left-1/2 -translate-x-1/2 w-72 h-32 bg-red-600/20 rounded-full blur-[45px] pointer-events-none z-0" />
                 
                 {/* Core Image Display */}
                 <img
-                  src={assetUrl('assets/nekorin-altima.png')}
+                  src={vehicle?.imageUrl ? mediaUrl(vehicle.imageUrl) : assetUrl('assets/nekorin-altima.png')}
                   alt=""
                   referrerPolicy="no-referrer"
                   className="w-full h-full object-contain relative z-20 p-5 scale-[1.35] -translate-y-0.5 transform origin-center transition-all duration-300"
@@ -1023,7 +1025,7 @@ export default function Dashboard({
                       نصيحة نيكورين الذكية
                     </div>
                     <p className="text-xs text-neutral-200 leading-relaxed font-sans mt-2">
-                      "افحص ضغط الإطارات شهرياً للحفاظ على أداء أفضل وتوفير استهلاك الوقود. اضبط الضغط على 32 psi لسيارة ألتيما."
+                      {`"افحص ضغط الإطارات شهرياً للحفاظ على أداء أفضل وتوفير استهلاك الوقود. اضبط الضغط المناسب لـ${vehicle ? `${vehicle.make} ${vehicle.model}` : 'السيارة'}."`}
                     </p>
                   </div>
 
@@ -1259,7 +1261,7 @@ export default function Dashboard({
           <div className="px-4 py-4 space-y-5 animate-fadeIn font-sans text-right">
             <div>
               <h3 className="text-base font-black text-white">المستندات والوثائق الافتراضية</h3>
-              <p className="text-[10px] text-white/40 font-mono">إدارة وثائق الملكية والتأمين الشامل لسيارة نيسان ألتيما</p>
+              <p className="text-[10px] text-white/40 font-mono">{vehicle ? `إدارة وثائق الملكية والتأمين الشامل لسيارة ${vehicle.make} ${vehicle.model}` : 'إدارة وثائق الملكية والتأمين الشامل للسيارة'}</p>
             </div>
 
             {/* UAE Documents Slider/Grid */}
@@ -1369,7 +1371,7 @@ export default function Dashboard({
           <div className="px-4 py-4 space-y-5 animate-fadeIn font-sans text-right">
             <div>
               <h3 className="text-base font-black text-white">الملف الشخصي والحساب</h3>
-              <p className="text-[10px] text-white/40 font-mono">بيانات قائد مركبة نيسان ألتيما والجراج المعتمد</p>
+              <p className="text-[10px] text-white/40 font-mono">{vehicle ? `بيانات قائد مركبة ${vehicle.make} ${vehicle.model} والجراج المعتمد` : 'بيانات قائد المركبة والجراج المعتمد'}</p>
             </div>
 
             {/* User Profile Card */}
@@ -1516,7 +1518,7 @@ export default function Dashboard({
           <div className="px-4 py-4 space-y-5 animate-fadeIn font-sans text-right">
             <div>
               <h3 className="text-base font-black text-white">التقارير التحليلية للوقود</h3>
-              <p className="text-[10px] text-white/40 font-mono">تحليل إحصائي لمصروفات البنزين لسيارة نيسان ألتيما ٢٠١٤</p>
+              <p className="text-[10px] text-white/40 font-mono">{vehicle ? `تحليل إحصائي لمصروفات البنزين لسيارة ${vehicle.make} ${vehicle.model} ${vehicle.year}` : 'تحليل إحصائي لمصروفات البنزين للسيارة'}</p>
             </div>
 
             {/* Total Spending Stat Display */}
