@@ -8,7 +8,6 @@ import {
   doc, 
   updateDoc, 
   query, 
-  orderBy, 
   where, 
   setDoc, 
   getDoc 
@@ -225,8 +224,7 @@ class FirebaseService {
     try {
       const q = query(
         collection(db, 'fuel_logs'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', userId)
       );
       const snapshot = await getDocs(q);
       const logs: FuelLog[] = [];
@@ -243,7 +241,7 @@ class FirebaseService {
           createdAt: data.createdAt || Date.now(),
         });
       });
-      return logs;
+      return logs.sort((a, b) => b.createdAt - a.createdAt);
     } catch (error) {
       console.error('Error fetching fuel logs from Firestore:', error);
       return [];
@@ -303,8 +301,7 @@ class FirebaseService {
     try {
       const q = query(
         collection(db, 'maintenance_logs'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', userId)
       );
       const snapshot = await getDocs(q);
       const logs: MaintenanceLog[] = [];
@@ -321,7 +318,7 @@ class FirebaseService {
           createdAt: data.createdAt || Date.now(),
         });
       });
-      return logs;
+      return logs.sort((a, b) => b.createdAt - a.createdAt);
     } catch (error) {
       console.error('Error fetching maintenance logs from Firestore:', error);
       return [];
@@ -405,8 +402,7 @@ class FirebaseService {
     try {
       const q = query(
         collection(db, 'documents'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
+        where('userId', '==', userId)
       );
       const snapshot = await getDocs(q);
       const docsList: VehicleDocument[] = [];
@@ -424,7 +420,7 @@ class FirebaseService {
           createdAt: data.createdAt || Date.now(),
         });
       });
-      return docsList;
+      return docsList.sort((a, b) => b.createdAt - a.createdAt);
     } catch (error) {
       console.error('Error fetching documents from Firestore:', error);
       return [];
