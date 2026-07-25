@@ -27,7 +27,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import firebaseService from '../lib/firebase';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
-const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+const assetUrl = (path: string) => `${(import.meta as any).env?.BASE_URL || '/'}${path.replace(/^\/+/, '')}`;
 
 // Custom UAE Dirham symbol component
 const DirhamSymbol = ({ className = "h-3.5 w-auto inline" }: { className?: string }) => {
