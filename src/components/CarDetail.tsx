@@ -3,6 +3,14 @@ import { ArrowLeft, Plus, Trash2, Calendar, DollarSign, Zap, Gauge, Wrench, Shie
 import { motion, AnimatePresence } from 'motion/react';
 import { Vehicle, ModLog } from '../types';
 
+const resolveMediaUrl = (url: string) => {
+  if (/^(https?:|data:|blob:)/.test(url)) return url;
+  const base = (import.meta as any).env?.BASE_URL || '/';
+  const repositoryPrefix = 'Nekorin-Garage-V1/';
+  const relativePath = url.replace(/^\/+/, '').replace(new RegExp(`^${repositoryPrefix}`), '');
+  return `${base}${relativePath}`;
+};
+
 interface CarDetailProps {
   vehicle: Vehicle;
   logs: ModLog[];
@@ -137,7 +145,7 @@ export default function CarDetail({
       {/* Header with Background image */}
       <div className="h-56 relative w-full flex-shrink-0">
         <img
-          src={vehicle.imageUrl}
+          src={resolveMediaUrl(vehicle.imageUrl)}
           alt={`${vehicle.make} ${vehicle.model}`}
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover"
