@@ -23,6 +23,8 @@ import {
 } from 'firebase/auth';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
+const assetUrl = (path: string) => `${import.meta.env.BASE_URL}${path.replace(/^\/+/, '')}`;
+
 const metaEnv = (import.meta as any).env || {};
 
 const firebaseConfig = {
@@ -138,7 +140,7 @@ class FirebaseService {
       powerHp: 182,
       torqueNm: 244,
       zeroToSixty: 7.7,
-      imageUrl: '/input_file_2.png',
+      imageUrl: assetUrl('input_file_2.png'),
       status: 'active',
       createdAt: Date.now(),
     };
@@ -229,7 +231,7 @@ class FirebaseService {
           powerHp: 182,
           torqueNm: 244,
           zeroToSixty: 7.7,
-          imageUrl: '/input_file_2.png',
+          imageUrl: assetUrl('input_file_2.png'),
           status: 'active',
           createdAt: Date.now(),
         };
