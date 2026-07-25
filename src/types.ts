@@ -9,6 +9,7 @@ export interface Vehicle {
   powerHp: number;
   torqueNm: number;
   zeroToSixty: number;
+  tankCapacity: number;
   imageUrl: string;
   status: 'active' | 'modding' | 'maintenance' | 'tuning';
   createdAt: number;

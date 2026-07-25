@@ -3,7 +3,7 @@ import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 
-const RELEASE_ID = '2026-07-25-mobile-auth-v4';
+const RELEASE_ID = '2026-07-25-firestore-vehicle-v5';
 
 async function clearLegacyAppCache() {
   try {
