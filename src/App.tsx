@@ -39,19 +39,9 @@ export default function App() {
     await firebaseService.signOut();
   };
 
-  const handleResetDemo = () => {
-    setIslandMessage('RESETTING PERSISTENCE...');
-    localStorage.clear();
-    // Refresh to re-initialize mock DB structures
-    setTimeout(() => {
-      window.location.reload();
-    }, 800);
-  };
-
   return (
     <PhoneFrame
       dynamicIslandMessage={islandMessage}
-      onResetDemo={handleResetDemo}
       currentUserEmail={user?.email}
     >
       {loading ? (
@@ -72,6 +62,7 @@ export default function App() {
           onAuthSuccess={(profile) => setUser(profile)}
           signUpFn={firebaseService.signUp.bind(firebaseService)}
           signInFn={firebaseService.signIn.bind(firebaseService)}
+          signInWithGoogleFn={firebaseService.signInWithGoogle.bind(firebaseService)}
           setIslandMessage={setIslandMessage}
         />
       ) : (

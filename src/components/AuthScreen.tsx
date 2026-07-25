@@ -7,6 +7,7 @@ interface AuthScreenProps {
   onAuthSuccess: (user: UserProfile) => void;
   signUpFn: (email: string, password: string, displayName: string, garageName: string) => Promise<UserProfile>;
   signInFn: (email: string, password: string) => Promise<UserProfile>;
+  signInWithGoogleFn: () => Promise<UserProfile>;
   setIslandMessage: (msg: string) => void;
 }
 
@@ -14,6 +15,7 @@ export default function AuthScreen({
   onAuthSuccess,
   signUpFn,
   signInFn,
+  signInWithGoogleFn,
   setIslandMessage,
 }: AuthScreenProps) {
   const [isSignUp, setIsSignUp] = useState(false);
@@ -23,6 +25,24 @@ export default function AuthScreen({
   const [garageName, setGarageName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const handleGoogleSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    setIslandMessage('GOOGLE AUTHENTICATION...');
+    try {
+      const profile = await signInWithGoogleFn();
+      setIslandMessage(`أهلاً بك، ${profile.displayName.toUpperCase()}`);
+      onAuthSuccess(profile);
+    } catch (err: any) {
+      if (err?.code !== 'auth/popup-closed-by-user') {
+        setError(err?.message || 'فشل تسجيل الدخول باستخدام Google.');
+        setIslandMessage('GOOGLE AUTH ERROR');
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -193,7 +213,16 @@ export default function AuthScreen({
           <div className="flex-grow border-t border-white/10" />
         </div>
 
-       
+        <button
+          type="button"
+          onClick={handleGoogleSignIn}
+          disabled={loading}
+          className="w-full bg-white/5 hover:bg-white/10 text-white font-bold text-sm py-3 px-4 rounded-xl transition-all border border-white/10 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+        >
+          <span className="w-5 h-5 rounded-full bg-white text-[#4285F4] font-black text-xs flex items-center justify-center">G</span>
+          تسجيل الدخول باستخدام Google
+        </button>
+
       {/* Footer Switcher */}
       <div className="text-center pb-2 text-xs relative z-10">
         <span className="text-white/40">

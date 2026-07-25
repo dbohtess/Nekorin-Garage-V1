@@ -17,7 +17,9 @@ import {
   getAuth, 
   onAuthStateChanged as firebaseOnAuthStateChanged, 
   signInWithEmailAndPassword, 
-  createUserWithEmailAndPassword, 
+  createUserWithEmailAndPassword,
+  GoogleAuthProvider,
+  signInWithPopup,
   signOut as firebaseSignOut, 
   updateProfile 
 } from 'firebase/auth';
@@ -128,24 +130,6 @@ class FirebaseService {
 
     await setDoc(doc(db, 'users', user.uid), profile);
 
-    // Create a default vehicle for this user
-    const defaultVehicle: Vehicle = {
-      id: 'altima-' + user.uid,
-      userId: user.uid,
-      make: 'Nissan',
-      model: 'Altima 2014',
-      year: 2014,
-      color: 'White',
-      engine: '2.5L I4 (QR25DE)',
-      powerHp: 182,
-      torqueNm: 244,
-      zeroToSixty: 7.7,
-      imageUrl: assetUrl('input_file_2.png'),
-      status: 'active',
-      createdAt: Date.now(),
-    };
-    await setDoc(doc(db, 'vehicles', defaultVehicle.id), defaultVehicle);
-
     this.currentUserProfile = profile;
     this.triggerAuthChange(profile);
     return profile;
@@ -153,40 +137,46 @@ class FirebaseService {
 
   async signIn(email: string, password: string): Promise<UserProfile> {
     if (!auth || !db) {
-      throw new Error('Firebase integration is not initialized. Please configure VITE_FIREBASE_* environment variables.');
+      throw new Error('Firebase integration is not initialized.');
     }
-    
-    try {
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const user = userCredential.user;
-      
-      const docSnap = await getDoc(doc(db, 'users', user.uid));
-      let profile: UserProfile;
-      if (docSnap.exists()) {
-        profile = docSnap.data() as UserProfile;
-      } else {
-        profile = {
-          uid: user.uid,
-          email: user.email || email,
-          displayName: user.displayName || email.split('@')[0],
-          garageName: 'Nekorin Garage',
-        };
-        await setDoc(doc(db, 'users', user.uid), profile);
-      }
-      
+
+    const userCredential = await signInWithEmailAndPassword(auth, email, password);
+    return this.getOrCreateUserProfile(userCredential.user);
+  }
+
+  async signInWithGoogle(): Promise<UserProfile> {
+    if (!auth || !db) {
+      throw new Error('Firebase integration is not initialized.');
+    }
+
+    const provider = new GoogleAuthProvider();
+    provider.setCustomParameters({ prompt: 'select_account' });
+    const userCredential = await signInWithPopup(auth, provider);
+    return this.getOrCreateUserProfile(userCredential.user);
+  }
+
+  private async getOrCreateUserProfile(user: { uid: string; email: string | null; displayName: string | null }): Promise<UserProfile> {
+    if (!db) throw new Error('Firestore is not initialized');
+
+    const userDocRef = doc(db, 'users', user.uid);
+    const docSnap = await getDoc(userDocRef);
+    if (docSnap.exists()) {
+      const profile = docSnap.data() as UserProfile;
       this.currentUserProfile = profile;
       this.triggerAuthChange(profile);
       return profile;
-    } catch (error: any) {
-      if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-        try {
-          return await this.signUp(email, password, email.split('@')[0], 'Nekorin Garage');
-        } catch (signUpErr) {
-          throw error;
-        }
-      }
-      throw error;
     }
+
+    const profile: UserProfile = {
+      uid: user.uid,
+      email: user.email || '',
+      displayName: user.displayName || user.email?.split('@')[0] || 'سائق نيكورين',
+      garageName: 'Nekorin Garage',
+    };
+    await setDoc(userDocRef, profile);
+    this.currentUserProfile = profile;
+    this.triggerAuthChange(profile);
+    return profile;
   }
 
   async signOut(): Promise<void> {
@@ -215,39 +205,15 @@ class FirebaseService {
 
   // --- Vehicles API ---
   async getVehicles(userId: string): Promise<Vehicle[]> {
-    if (!db) return [];
-    try {
-      const q = query(collection(db, 'vehicles'), where('userId', '==', userId));
-      const snapshot = await getDocs(q);
-      if (snapshot.empty) {
-        const defaultVehicle: Vehicle = {
-          id: 'altima-' + userId,
-          userId: userId,
-          make: 'Nissan',
-          model: 'Altima 2014',
-          year: 2014,
-          color: 'White',
-          engine: '2.5L I4 (QR25DE)',
-          powerHp: 182,
-          torqueNm: 244,
-          zeroToSixty: 7.7,
-          imageUrl: assetUrl('input_file_2.png'),
-          status: 'active',
-          createdAt: Date.now(),
-        };
-        await setDoc(doc(db, 'vehicles', defaultVehicle.id), defaultVehicle);
-        return [defaultVehicle];
-      } else {
-        const vehicles: Vehicle[] = [];
-        snapshot.forEach((docSnap) => {
-          vehicles.push({ id: docSnap.id, ...docSnap.data() } as Vehicle);
-        });
-        return vehicles;
-      }
-    } catch (error) {
-      console.error('Error fetching vehicles from Firestore:', error);
-      return [];
-    }
+    if (!db || auth?.currentUser?.uid !== userId) return [];
+
+    const q = query(collection(db, 'vehicles'), where('userId', '==', userId));
+    const snapshot = await getDocs(q);
+    const vehicles: Vehicle[] = [];
+    snapshot.forEach((docSnap) => {
+      vehicles.push({ id: docSnap.id, ...docSnap.data() } as Vehicle);
+    });
+    return vehicles;
   }
 
   // --- Fuel Logs API ---
@@ -512,9 +478,9 @@ class FirebaseService {
 
   // --- Fuel Prices Configuration API ---
   async getFuelPrices(): Promise<FuelPrices | null> {
-    if (!db) return null;
+    if (!db || !auth?.currentUser) return null;
     try {
-      const docSnap = await getDoc(doc(db, 'app_config', 'fuel_prices'));
+      const docSnap = await getDoc(doc(db, 'app_config', auth.currentUser.uid));
       if (docSnap.exists()) {
         const data = docSnap.data();
         return {
@@ -535,16 +501,38 @@ class FirebaseService {
   }
 
   async saveFuelPrices(prices: Omit<FuelPrices, 'updatedAt'>): Promise<void> {
-    if (!db) throw new Error('Firestore is not initialized');
+    if (!db || !auth?.currentUser) throw new Error('User is not authenticated');
     try {
-      await setDoc(doc(db, 'app_config', 'fuel_prices'), {
+      await setDoc(doc(db, 'app_config', auth.currentUser.uid), {
         ...prices,
+        userId: auth.currentUser.uid,
         updatedAt: Date.now()
-      });
+      }, { merge: true });
     } catch (error) {
       console.error('Error saving fuel prices to Firestore:', error);
       throw error;
     }
+  }
+
+  async getUserSettings(): Promise<{ syncDatabase: boolean; syncStorage: boolean; useMiles: boolean } | null> {
+    if (!db || !auth?.currentUser) return null;
+    const docSnap = await getDoc(doc(db, 'app_config', auth.currentUser.uid));
+    if (!docSnap.exists()) return null;
+    const data = docSnap.data();
+    return {
+      syncDatabase: data.syncDatabase !== false,
+      syncStorage: data.syncStorage !== false,
+      useMiles: data.useMiles === true,
+    };
+  }
+
+  async saveUserSettings(settings: { syncDatabase: boolean; syncStorage: boolean; useMiles: boolean }): Promise<void> {
+    if (!db || !auth?.currentUser) throw new Error('User is not authenticated');
+    await setDoc(doc(db, 'app_config', auth.currentUser.uid), {
+      ...settings,
+      userId: auth.currentUser.uid,
+      updatedAt: Date.now(),
+    }, { merge: true });
   }
 
   // --- Profile API ---

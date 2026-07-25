@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Wifi, Battery, Signal, User, RefreshCw, Smartphone } from 'lucide-react';
+import { Wifi, Battery, Signal } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface PhoneFrameProps {
   children: React.ReactNode;
   dynamicIslandMessage?: string | null;
-  onResetDemo: () => void;
   currentUserEmail?: string;
 }
 
 export default function PhoneFrame({
   children,
   dynamicIslandMessage,
-  onResetDemo,
   currentUserEmail,
 }: PhoneFrameProps) {
   const [currentTime, setCurrentTime] = useState('');
@@ -44,20 +42,20 @@ export default function PhoneFrame({
         <div className="space-y-2">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-mono">
             <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            LIVE FLUTTER SIMULATOR
+            LIVE WEB APPLICATION
           </div>
           <h1 className="text-3xl lg:text-4xl font-black tracking-tight text-white">
             Nekorin Garage <span className="text-red-500 font-mono text-xl">V1</span>
           </h1>
           <p className="text-white/60 text-sm leading-relaxed max-w-sm mx-auto lg:mx-0">
-            A premium dark-gray and red-accent automotive garage mobile dashboard. Designed with an elegant RTL layout, local Firestore synchronization, and standard UAE Dirham currency mappings.
+            A premium dark-gray and red-accent automotive garage mobile dashboard. Designed with an elegant RTL layout, secure Firebase synchronization, and standard UAE Dirham currency mappings.
           </p>
         </div>
 
-        {/* Console / Simulator Status Info */}
+        {/* Cloud Service Status Info */}
         <div className="bg-white/5 border border-white/10 rounded-3xl p-5 text-left font-mono text-xs space-y-4 shadow-xl backdrop-blur-md">
           <div className="flex items-center justify-between border-b border-white/10 pb-2.5">
-            <span className="text-white/40">SIMULATOR ENGINES</span>
+            <span className="text-white/40">CLOUD SERVICES</span>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-red-500" />
               <span className="text-red-400 text-[10px]">ONLINE</span>
@@ -67,15 +65,15 @@ export default function PhoneFrame({
           <div className="space-y-1.5 text-white/60">
             <div className="flex justify-between">
               <span className="text-white/40">Platform:</span>
-              <span>iOS 17.5 (iPhone 15 Pro)</span>
+              <span>Web / iPhone PWA</span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/40">Renderer:</span>
-              <span>Skia / Impeller (Flutter Web)</span>
+              <span>React / Vite</span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/40">Auth state:</span>
-              <span className="text-red-400">{currentUserEmail ? 'Authenticated' : 'Guest Mode'}</span>
+              <span className="text-red-400">{currentUserEmail ? 'Authenticated' : 'Signed Out'}</span>
             </div>
             {currentUserEmail && (
               <div className="flex justify-between truncate">
@@ -85,21 +83,14 @@ export default function PhoneFrame({
             )}
             <div className="flex justify-between">
               <span className="text-white/40">Firestore:</span>
-              <span className="text-red-500">Connected (Persisted)</span>
+              <span className="text-red-500">Connected (UID Secured)</span>
             </div>
             <div className="flex justify-between">
               <span className="text-white/40">Storage:</span>
-              <span className="text-red-500">Active (Base64 Binary)</span>
+              <span className="text-red-500">Firestore Metadata</span>
             </div>
           </div>
 
-          <button
-            onClick={onResetDemo}
-            className="w-full mt-2 flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-white/5 hover:bg-white/10 text-neutral-200 transition-all font-sans font-semibold text-xs border border-white/10 active:scale-95 cursor-pointer"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-red-400 animate-spin-slow" />
-            Reset Application Database
-          </button>
         </div>
       </div>
 

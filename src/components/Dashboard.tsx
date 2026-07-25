@@ -180,25 +180,24 @@ export default function Dashboard({
     fetchData();
   }, [user]);
 
-  // Load interactive settings
+  // Load and save settings for the authenticated UID
   useEffect(() => {
-    const saved = localStorage.getItem('nekorin_v1_settings');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (parsed.syncDatabase !== undefined) setSyncDatabase(parsed.syncDatabase);
-        if (parsed.syncStorage !== undefined) setSyncStorage(parsed.syncStorage);
-        if (parsed.useMiles !== undefined) setUseMiles(parsed.useMiles);
-      } catch (e) {
-        console.error('Failed to parse settings', e);
-      }
-    }
-  }, []);
+    firebaseService.getUserSettings().then((saved) => {
+      if (!saved) return;
+      setSyncDatabase(saved.syncDatabase);
+      setSyncStorage(saved.syncStorage);
+      setUseMiles(saved.useMiles);
+    }).catch(() => setIslandMessage('SETTINGS READ ERROR'));
+  }, [user.uid]);
 
-  const saveSettings = (updated: { syncDatabase?: boolean; syncStorage?: boolean; useMiles?: boolean }) => {
+  const saveSettings = async (updated: { syncDatabase?: boolean; syncStorage?: boolean; useMiles?: boolean }) => {
     const current = { syncDatabase, syncStorage, useMiles, ...updated };
-    localStorage.setItem('nekorin_v1_settings', JSON.stringify(current));
-    setIslandMessage('⚙️ SETTINGS UPDATED');
+    try {
+      await firebaseService.saveUserSettings(current);
+      setIslandMessage('⚙️ SETTINGS UPDATED');
+    } catch {
+      setIslandMessage('SETTINGS SAVE ERROR');
+    }
   };
 
   // Sync fuelPricePerLiter with selected fuelGrade and our dynamic fuelPrices
@@ -512,7 +511,7 @@ export default function Dashboard({
     }
   };
 
-  // Drag and Drop simulated document upload
+  // Drag and drop document metadata
   const handleDrag = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -530,45 +529,38 @@ export default function Dashboard({
 
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      simulateDocumentUpload(file);
+      saveDocumentMetadata(file);
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      simulateDocumentUpload(e.target.files[0]);
+      saveDocumentMetadata(e.target.files[0]);
     }
   };
 
-  const simulateDocumentUpload = (file: File) => {
+  const saveDocumentMetadata = async (file: File) => {
     setUploadingDoc(true);
-    setIslandMessage('STORING PDF BINARY...');
-    
-    setTimeout(async () => {
-      try {
-        const today = new Date();
-        const dateString = `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
-        const expiryYear = today.getFullYear() + 1;
-        const expiryString = `${expiryYear}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
-        
-        const newDoc = await firebaseService.addDocument({
-          title: file.name.split('.')[0] || 'مستند مضاف',
-          docNumber: 'DOC-MOC-' + Math.floor(10000 + Math.random() * 90000),
-          issueDate: dateString,
-          expiryDate: expiryString,
-          owner: user.displayName,
-          category: file.name.toLowerCase().includes('insurance') ? 'insurance' : 'registration',
-          notes: 'مستند تم تحميله رقمياً عبر بوابة التخزين الافتراضية بنجاح.',
-        });
-
-        setDocuments([newDoc, ...documents]);
-        setIslandMessage('🛡️ UPLOAD SECURED');
-      } catch (err) {
-        setIslandMessage('UPLOAD FAILED');
-      } finally {
-        setUploadingDoc(false);
-      }
-    }, 1500);
+    setIslandMessage('SAVING DOCUMENT METADATA...');
+    try {
+      const today = new Date();
+      const dateString = `${today.getFullYear()}/${(today.getMonth() + 1).toString().padStart(2, '0')}/${today.getDate().toString().padStart(2, '0')}`;
+      const newDoc = await firebaseService.addDocument({
+        title: file.name.replace(/\.[^.]+$/, '') || 'مستند مضاف',
+        docNumber: '',
+        issueDate: dateString,
+        expiryDate: '',
+        owner: user.displayName,
+        category: file.name.toLowerCase().includes('insurance') ? 'insurance' : 'registration',
+        notes: `اسم الملف المحدد: ${file.name}`,
+      });
+      setDocuments([newDoc, ...documents]);
+      setIslandMessage('DOCUMENT SAVED');
+    } catch {
+      setIslandMessage('UPLOAD FAILED');
+    } finally {
+      setUploadingDoc(false);
+    }
   };
 
   return (
@@ -1268,7 +1260,7 @@ export default function Dashboard({
               })}
             </div>
 
-            {/* Drag and Drop Document Upload simulation */}
+            {/* Drag and Drop Document Metadata */}
             <div className="space-y-2">
               <span className="text-[10px] font-bold text-white/40 uppercase tracking-widest font-mono block">التخزين الرقمي المؤقت (Firebase Storage)</span>
               
@@ -1517,7 +1509,7 @@ export default function Dashboard({
                   <span className="text-[9px] text-neutral-400 mt-1">مايو</span>
                 </div>
 
-                {/* July (Our Active Mock Month) */}
+                {/* July */}
                 <div className="flex flex-col items-center gap-1.5 flex-1">
                   <div className="text-[8px] text-red-400 font-bold">{totalFuelCostThisMonth.toFixed(0)}</div>
                   {/* Glowing Red Active Bar */}
@@ -1606,7 +1598,7 @@ export default function Dashboard({
                 <span className="text-xs font-bold text-red-500 font-sans">العربية (RTL)</span>
               </div>
 
-              {/* Database Synchronization (Simulated Firestore) */}
+              {/* Database Synchronization */}
               <div className="flex justify-between items-center pb-2 border-b border-white/5">
                 <div>
                   <span className="text-xs text-neutral-300 block">تزامن السحابة (Firestore)</span>
@@ -1624,7 +1616,7 @@ export default function Dashboard({
                 </button>
               </div>
 
-              {/* Storage Synchronization (Simulated Firebase Storage) */}
+              {/* Storage Synchronization */}
               <div className="flex justify-between items-center pb-2 border-b border-white/5">
                 <div>
                   <span className="text-xs text-neutral-300 block">تخزين المستندات (Storage)</span>
