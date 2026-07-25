@@ -94,7 +94,7 @@ export default function Dashboard({
   const [savingPrices, setSavingPrices] = useState(false);
 
   // Fuel Form Fields
-  const [fuelOdometer, setFuelOdometer] = useState<string>('126560');
+  const [fuelOdometer, setFuelOdometer] = useState<string>('');
   const [fuelGrade, setFuelGrade] = useState<'91' | '95' | '98' | 'Diesel'>('95');
   const [fuelLiters, setFuelLiters] = useState<number>(45);
   const [fuelPricePerLiter, setFuelPricePerLiter] = useState<number>(3.21);
@@ -103,14 +103,14 @@ export default function Dashboard({
 
   // Maintenance Form Fields
   const [maintTitle, setMaintTitle] = useState('');
-  const [maintOdometer, setMaintOdometer] = useState('126560');
+  const [maintOdometer, setMaintOdometer] = useState('');
   const [maintCost, setMaintCost] = useState('350');
   const [maintNotes, setMaintNotes] = useState('');
   const [maintCompleted, setMaintCompleted] = useState(true);
   const [submittingMaint, setSubmittingMaint] = useState(false);
 
   // Camera and odometer OCR states
-  const [cameraOdometer, setCameraOdometer] = useState<number>(126560);
+  const [cameraOdometer, setCameraOdometer] = useState<number>(0);
   const [scanning, setScanning] = useState(false);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -226,22 +226,22 @@ export default function Dashboard({
   }, [fuelAmountPaid, fuelPricePerLiter]);
 
   // Derived Values for Dashboard Stats
-  const currentOdometer = fuelLogs.length > 0 ? Math.max(...fuelLogs.map(l => l.odometer)) : 126560;
+  const currentOdometer = fuelLogs.length > 0 ? Math.max(...fuelLogs.map(l => l.odometer)) : 0;
   
   // Calculate average fuel consumption automatically in km/L (baseline fallback 11.8)
   const calculateAverageEfficiency = (logs: FuelLog[]) => {
-    if (logs.length < 2) return 11.8;
+    if (logs.length < 2) return 0;
     const sorted = [...logs].sort((a, b) => b.odometer - a.odometer);
     const latestOdometer = sorted[0].odometer;
     const earliestOdometer = sorted[sorted.length - 1].odometer;
     const distance = latestOdometer - earliestOdometer;
-    if (distance <= 0) return 11.8;
+    if (distance <= 0) return 0;
     
     let totalLiters = 0;
     for (let i = 0; i < sorted.length - 1; i++) {
       totalLiters += sorted[i].liters;
     }
-    if (totalLiters <= 0) return 11.8;
+    if (totalLiters <= 0) return 0;
     return Number((distance / totalLiters).toFixed(1));
   };
   
@@ -267,8 +267,8 @@ export default function Dashboard({
   const latestFuelLog = fuelLogs.length > 0 ? [...fuelLogs].sort((a, b) => b.odometer - a.odometer)[0] : null;
   const tankCapacity = 65; // Nissan Altima 2014 fuel tank capacity in liters
   
-  let fuelPercentage = 68; // Default fallback matching UI
-  let remainingRange = 248; // Default fallback matching UI
+  let fuelPercentage = 0;
+  let remainingRange = 0;
 
   if (latestFuelLog) {
     const distanceSinceLastRefuel = Math.max(0, currentOdometer - latestFuelLog.odometer);
@@ -285,12 +285,15 @@ export default function Dashboard({
     }
   }
 
-  const lastFillDate = fuelLogs.length > 0 ? fuelLogs[0].date : '2024/07/08';
-  const lastFillLiters = fuelLogs.length > 0 ? fuelLogs[0].liters : 45.0;
+  const lastFillDate = fuelLogs.length > 0 ? fuelLogs[0].date : '—';
+  const lastFillLiters = fuelLogs.length > 0 ? fuelLogs[0].liters : 0;
 
   const averagePricePerLiter = fuelLogs.length > 0
     ? fuelLogs.reduce((sum, l) => sum + l.pricePerLiter, 0) / fuelLogs.length
-    : 3.21;
+    : fuelPrices.special95;
+
+  const pendingMaintenance = maintenanceLogs.find((log) => !log.completed);
+  const pendingMaintenanceCount = maintenanceLogs.filter((log) => !log.completed).length;
 
   // Add Fuel Log handler
   const handleAddFuel = async (e: React.FormEvent) => {
@@ -612,8 +615,10 @@ export default function Dashboard({
             <div className="px-4 pt-1 flex justify-between items-end font-sans">
               <div>
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xs font-bold text-neutral-400 tracking-wider">NISSAN</span>
-                  <span className="text-base font-black text-red-500 tracking-wider">ALTIMA 2014</span>
+                  <span className="text-xs font-bold text-neutral-400 tracking-wider">{vehicle?.make || 'GARAGE'}</span>
+                  <span className="text-base font-black text-red-500 tracking-wider">
+                    {vehicle ? `${vehicle.model} ${vehicle.year}` : 'لا توجد سيارة'}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5 mt-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -622,7 +627,9 @@ export default function Dashboard({
               </div>
               <div className="text-left font-mono">
                 <span className="text-[8px] text-white/40 block">آخر تحديث</span>
-                <span className="text-[9px] font-bold text-neutral-300">اليوم : 9:30 ص</span>
+                <span className="text-[9px] font-bold text-neutral-300">
+                  اليوم : {new Date().toLocaleTimeString('ar-AE', { hour: '2-digit', minute: '2-digit' })}
+                </span>
               </div>
             </div>
 
@@ -774,9 +781,11 @@ export default function Dashboard({
                   <div className="w-11 h-11 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-red-950/20 hover:border-red-500/30 transition-all relative">
                     <Wrench className="w-5 h-5 text-red-500" />
                     {/* Badge */}
-                    <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-[8px] font-bold flex items-center justify-center text-white font-mono">
-                      2
-                    </span>
+                    {pendingMaintenanceCount > 0 && (
+                      <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-600 text-[8px] font-bold flex items-center justify-center text-white font-mono">
+                        {pendingMaintenanceCount}
+                      </span>
+                    )}
                   </div>
                   <span className="text-[9px] text-white/60 font-medium">الصيانة</span>
                 </button>
@@ -873,9 +882,11 @@ export default function Dashboard({
                     <div className="text-[9px] font-bold text-white/40 uppercase tracking-widest font-mono">
                       تذكير صيانة
                     </div>
-                    <h4 className="text-xs font-black text-white font-sans">تغيير زيت المحرك</h4>
+                    <h4 className="text-xs font-black text-white font-sans">
+                      {pendingMaintenance?.title || 'لا توجد صيانة معلقة'}
+                    </h4>
                     <span className="block text-red-500 font-bold text-[10px] font-mono">
-                      بعد 1,250 كم أو 15 يوم
+                      {pendingMaintenance ? `${pendingMaintenance.odometer.toLocaleString()} كم` : 'السجل محدث'}
                     </span>
                   </div>
                 </div>
@@ -1926,7 +1937,7 @@ export default function Dashboard({
                     required
                     value={fuelOdometer}
                     onChange={(e) => setFuelOdometer(e.target.value)}
-                    placeholder="مثال: 126560"
+                    placeholder="أدخل قراءة العداد"
                     className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-3.5 text-xs text-white placeholder-white/20 outline-none font-mono text-left"
                     dir="ltr"
                   />
@@ -2062,7 +2073,7 @@ export default function Dashboard({
                       required
                       value={maintOdometer}
                       onChange={(e) => setMaintOdometer(e.target.value)}
-                      placeholder="126560"
+                      placeholder="أدخل قراءة العداد"
                       className="w-full bg-white/5 border border-white/10 rounded-xl py-2.5 px-3.5 text-xs text-white outline-none font-mono text-left"
                       dir="ltr"
                     />
