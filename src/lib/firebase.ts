@@ -76,57 +76,64 @@ class FirebaseService {
   }
 
   private async initAuthListener() {
-    if (auth && db) {
-      try {
-        const redirectResult = await getRedirectResult(auth);
-        if (redirectResult) {
-          await this.getOrCreateUserProfile(redirectResult.user);
-        }
-      } catch (error) {
-        console.error('Google redirect sign-in failed:', error);
-      }
-
-      firebaseOnAuthStateChanged(auth, async (user) => {
-        this.authInitialized = true;
-
-        if (!user) {
-          this.currentUserProfile = null;
-          this.triggerAuthChange(null);
-        } else {
-          try {
-            const docSnap = await getDoc(doc(db!, 'users', user.uid));
-            if (docSnap.exists()) {
-              this.currentUserProfile = docSnap.data() as UserProfile;
-            } else {
-              const profile: UserProfile = {
-                uid: user.uid,
-                email: user.email || '',
-                displayName: user.displayName || user.email?.split('@')[0] || 'سائق نيكورين',
-                garageName: 'Nekorin Garage',
-              };
-              await setDoc(doc(db!, 'users', user.uid), profile);
-              this.currentUserProfile = profile;
-            }
-            this.triggerAuthChange(this.currentUserProfile);
-          } catch (error) {
-            console.error('Error in auth state change fetching user profile:', error);
-            const fallbackProfile: UserProfile = {
-              uid: user.uid,
-              email: user.email || '',
-              displayName: user.displayName || user.email?.split('@')[0] || 'سائق نيكورين',
-              garageName: 'Nekorin Garage',
-            };
-            this.currentUserProfile = fallbackProfile;
-            this.triggerAuthChange(fallbackProfile);
-          }
-        }
-      });
-    } else {
+    if (!auth || !db) {
       setTimeout(() => {
         this.authInitialized = true;
         this.triggerAuthChange(null);
       }, 0);
+      return;
     }
+
+    try {
+      await setPersistence(auth, browserLocalPersistence);
+      await getRedirectResult(auth);
+    } catch (error) {
+      console.error('Google redirect sign-in failed:', error);
+    }
+
+    firebaseOnAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        this.currentUserProfile = null;
+        this.authInitialized = true;
+        this.triggerAuthChange(null);
+        return;
+      }
+
+      let profile: UserProfile;
+
+      try {
+        const docSnap = await getDoc(doc(db!, 'users', user.uid));
+        if (docSnap.exists()) {
+          const storedProfile = docSnap.data() as Partial<UserProfile>;
+          profile = {
+            uid: user.uid,
+            email: storedProfile.email || user.email || '',
+            displayName: storedProfile.displayName || user.displayName || user.email?.split('@')[0] || 'سائق نيكورين',
+            garageName: storedProfile.garageName || 'Nekorin Garage',
+          };
+        } else {
+          profile = {
+            uid: user.uid,
+            email: user.email || '',
+            displayName: user.displayName || user.email?.split('@')[0] || 'سائق نيكورين',
+            garageName: 'Nekorin Garage',
+          };
+          await setDoc(doc(db!, 'users', user.uid), profile);
+        }
+      } catch (error) {
+        console.error('Error in auth state change fetching user profile:', error);
+        profile = {
+          uid: user.uid,
+          email: user.email || '',
+          displayName: user.displayName || user.email?.split('@')[0] || 'سائق نيكورين',
+          garageName: 'Nekorin Garage',
+        };
+      }
+
+      this.currentUserProfile = profile;
+      this.authInitialized = true;
+      this.triggerAuthChange(profile);
+    });
   }
 
   // --- Auth API ---
@@ -221,6 +228,33 @@ class FirebaseService {
     return userId;
   }
 
+  private async waitForAuthenticatedUser(expectedUserId: string): Promise<void> {
+    if (!auth) throw new Error('Firebase Auth is not initialized');
+    if (auth.currentUser?.uid === expectedUserId) return;
+
+    await new Promise<void>((resolve, reject) => {
+      let unsubscribe = () => {};
+      const timeoutId = window.setTimeout(() => {
+        unsubscribe();
+        reject(new Error('Timed out waiting for the authenticated user'));
+      }, 10000);
+
+      unsubscribe = firebaseOnAuthStateChanged(auth!, (user) => {
+        if (!user) return;
+
+        window.clearTimeout(timeoutId);
+        unsubscribe();
+
+        if (user.uid !== expectedUserId) {
+          reject(new Error('Authenticated user does not match the requested account'));
+          return;
+        }
+
+        resolve();
+      });
+    });
+  }
+
   private async assertOwnedRecord(collectionName: string, id: string) {
     if (!db) throw new Error('Firestore is not initialized');
     const userId = this.getAuthenticatedUserId();
@@ -234,9 +268,16 @@ class FirebaseService {
 
   // --- Vehicles API ---
   async getVehicles(userId: string): Promise<Vehicle[]> {
-    if (!db || auth?.currentUser?.uid !== userId) return [];
+    if (!db) throw new Error('Firestore is not initialized');
 
-    const q = query(collection(db, 'vehicles'), where('userId', '==', userId));
+    await this.waitForAuthenticatedUser(userId);
+
+    const authenticatedUserId = this.getAuthenticatedUserId();
+    if (authenticatedUserId !== userId) {
+      throw new Error('Authenticated user does not match the vehicle owner');
+    }
+
+    const q = query(collection(db, 'vehicles'), where('userId', '==', authenticatedUserId));
     const snapshot = await getDocs(q);
     const vehicles: Vehicle[] = [];
     snapshot.forEach((docSnap) => {
