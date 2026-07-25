@@ -18,6 +18,9 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
+  getRedirectResult,
+  setPersistence,
+  browserLocalPersistence,
   signOut as firebaseSignOut,
   updateProfile
 } from 'firebase/auth';
@@ -66,14 +69,26 @@ if (hasFirebaseConfig) {
 class FirebaseService {
   private authCallbacks: ((user: UserProfile | null) => void)[] = [];
   private currentUserProfile: UserProfile | null = null;
+  private authInitialized = false;
 
   constructor() {
     this.initAuthListener();
   }
 
-  private initAuthListener() {
+  private async initAuthListener() {
     if (auth && db) {
+      try {
+        const redirectResult = await getRedirectResult(auth);
+        if (redirectResult) {
+          await this.getOrCreateUserProfile(redirectResult.user);
+        }
+      } catch (error) {
+        console.error('Google redirect sign-in failed:', error);
+      }
+
       firebaseOnAuthStateChanged(auth, async (user) => {
+        this.authInitialized = true;
+
         if (!user) {
           this.currentUserProfile = null;
           this.triggerAuthChange(null);
@@ -83,7 +98,6 @@ class FirebaseService {
             if (docSnap.exists()) {
               this.currentUserProfile = docSnap.data() as UserProfile;
             } else {
-              // Auto-create profile if missing
               const profile: UserProfile = {
                 uid: user.uid,
                 email: user.email || '',
@@ -96,7 +110,6 @@ class FirebaseService {
             this.triggerAuthChange(this.currentUserProfile);
           } catch (error) {
             console.error('Error in auth state change fetching user profile:', error);
-            // Fallback profile
             const fallbackProfile: UserProfile = {
               uid: user.uid,
               email: user.email || '',
@@ -110,6 +123,7 @@ class FirebaseService {
       });
     } else {
       setTimeout(() => {
+        this.authInitialized = true;
         this.triggerAuthChange(null);
       }, 0);
     }
@@ -120,6 +134,8 @@ class FirebaseService {
     if (!auth || !db) {
       throw new Error('Firebase integration is not initialized.');
     }
+
+    await setPersistence(auth, browserLocalPersistence);
 
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: 'select_account' });
@@ -187,7 +203,9 @@ class FirebaseService {
 
   onAuthStateChanged(callback: (user: UserProfile | null) => void) {
     this.authCallbacks.push(callback);
-    callback(this.currentUserProfile);
+    if (this.authInitialized) {
+      callback(this.currentUserProfile);
+    }
     return () => {
       this.authCallbacks = this.authCallbacks.filter(cb => cb !== callback);
     };
