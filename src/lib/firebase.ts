@@ -18,7 +18,8 @@ import {
   GoogleAuthProvider,
   signInWithPopup,
   signInWithRedirect,
-  signOut as firebaseSignOut
+  signOut as firebaseSignOut,
+  updateProfile
 } from 'firebase/auth';
 import { Vehicle, FuelLog, MaintenanceLog, VehicleDocument, UserProfile, FuelPrices } from '../types';
 
