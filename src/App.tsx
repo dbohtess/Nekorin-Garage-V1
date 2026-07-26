@@ -49,7 +49,6 @@ export default function App() {
     return (
       <AuthScreen
         onAuthSuccess={setUser}
-        signInWithGoogleFn={firebaseService.signInWithGoogle.bind(firebaseService)}
         setIslandMessage={setIslandMessage}
       />
     );
